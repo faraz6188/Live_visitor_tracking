@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; }
+        .card { margin-bottom: 20px; }
+        #visits-table { font-size: 0.85rem; }
+        .stats-card { min-height: 150px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="my-4">Website Analytics Dashboard</h1>
+        
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Visits</h5>
+                        <p class="card-text display-4" id="total-visits">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Unique Visitors</h5>
+                        <p class="card-text display-4" id="unique-visitors">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Mobile Visits</h5>
+                        <p class="card-text display-4" id="mobile-visits">-</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Desktop Visits</h5>
+                        <p class="card-text display-4" id="desktop-visits">-</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Recent Visits</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped" id="visits-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Visitor ID</th>
+                                <th>Timestamp</th>
+                                <th>URL</th>
+                                <th>Referrer</th>
+                                <th>Device</th>
+                                <th>Screen</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody id="visits-data">
+                            <tr>
+                                <td colspan="8" class="text-center">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Function to fetch and display analytics data
+        async function loadAnalytics() {
+            try {
+                const response = await fetch('/api/analytics');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch analytics data');
+                }
+                
+                const data = await response.json();
+                
+                // Process data
+                const uniqueVisitors = new Set(data.map(visit => visit.visitor_id)).size;
+                const mobileVisits = data.filter(visit => isMobileUA(visit.user_agent)).length;
+                const desktopVisits = data.length - mobileVisits;
+                
+                // Update stats
+                document.getElementById('total-visits').textContent = data.length;
+                document.getElementById('unique-visitors').textContent = uniqueVisitors;
+                document.getElementById('mobile-visits').textContent = mobileVisits;
+                document.getElementById('desktop-visits').textContent = desktopVisits;
+                
+                // Update table
+                const tableBody = document.getElementById('visits-data');
+                tableBody.innerHTML = '';
+                
+                data.slice(0, 100).forEach(visit => {
+                    const row = document.createElement('tr');
+                    
+                    // Detect device type
+                    const deviceType = isMobileUA(visit.user_agent) ? 'Mobile' : 'Desktop';
+                    const deviceInfo = deviceType + getDeviceDetails(visit.user_agent);
+                    
+                    // Format date
+                    const date = new Date(visit.timestamp);
+                    const formattedDate = date.toLocaleString();
+                    
+                    row.innerHTML = `
+                        <td>${visit.id}</td>
+                        <td title="${visit.visitor_id}">${visit.visitor_id.substring(0, 8)}...</td>
+                        <td>${formattedDate}</td>
+                        <td title="${visit.url}">${formatUrl(visit.url)}</td>
+                        <td>${visit.referrer || 'Direct'}</td>
+                        <td>${deviceInfo}</td>
+                        <td>${visit.screen_width}x${visit.screen_height}</td>
+                        <td>${visit.ip_address}</td>
+                    `;
+                    
+                    tableBody.appendChild(row);
+                });
+                
+            } catch (error) {
+                console.error('Error loading analytics:', error);
+                document.getElementById('visits-data').innerHTML = 
+                    `<tr><td colspan="8" class="text-center text-danger">Error loading data: ${error.message}</td></tr>`;
+            }
+        }
+        
+        // Helper function to check if user agent is from a mobile device
+        function isMobileUA(userAgent) {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+        }
+        
+        // Helper function to get device details from user agent
+        function getDeviceDetails(userAgent) {
+            let details = '';
+            
+            if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+                details = ' (iOS)';
+            } else if (userAgent.includes('Android')) {
+                details = ' (Android)';
+            }
+            
+            if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+                details += ' Safari';
+            } else if (userAgent.includes('Chrome')) {
+                details += ' Chrome';
+            } else if (userAgent.includes('Firefox')) {
+                details += ' Firefox';
+            }
+            
+            return details;
+        }
+        
+        // Helper function to format URLs
+        function formatUrl(url) {
+            if (!url) return 'Unknown';
+            try {
+                const urlObj = new URL(url);
+                return urlObj.pathname.length > 1 ? 
+                    urlObj.hostname + urlObj.pathname : 
+                    urlObj.hostname;
+            } catch (e) {
+                return url.substring(0, 30) + '...';
+            }
+        }
+        
+        // Load data when page loads
+        document.addEventListener('DOMContentLoaded', loadAnalytics);
+        
+        // Refresh data every 30 seconds
+        setInterval(loadAnalytics, 30000);
+    </script>
+</body>
+</html>

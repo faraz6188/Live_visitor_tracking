@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <style>
+        body { padding: 20px; background-color: #f8f9fa; }
+        .card { margin-bottom: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #visits-table { font-size: 0.85rem; }
+        .stats-card { min-height: 150px; transition: all 0.3s ease; }
+        .stats-card:hover { transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.1); }
+        .card-title { color: #6c757d; font-weight: 600; }
+        .display-4 { font-weight: 600; color: #343a40; }
+        .chart-container { height: 300px; margin-bottom: 30px; }
+        .refresh-btn { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
+        .table-responsive { max-height: 600px; overflow-y: auto; }
+        .navbar { margin-bottom: 20px; background-color: #343a40 !important; }
+        .navbar-brand { color: white !important; font-weight: 600; }
+        .badge-pill { border-radius: 50px; padding: 0.35em 0.65em; }
+        
+        @media (max-width: 768px) {
+            .stats-card { margin-bottom: 15px; }
+            .display-4 { font-size: 1.8rem; }
+            .card-title { font-size: 0.9rem; }
+            .chart-container { height: 250px; }
+        }
+        
+        .card { transition: all 0.3s ease; }
+        #visits-table tbody tr:hover { background-color: rgba(0,123,255,0.05); }
+        #visits-table td {
+            vertical-align: middle;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        #connection-status {
+            font-weight: normal;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus {
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+        
+        .btn { transition: all 0.2s ease; }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .spin {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+        
+        canvas { filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.1)); }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Website Analytics Dashboard</a>
+            <div class="d-flex">
+                <span class="badge bg-success me-2" id="connection-status">Connected</span>
+                <button class="btn btn-sm btn-outline-light" id="refresh-btn">
+                    <span id="refresh-icon">↻</span> Refresh Data
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Visits</h5>
+                        <p class="card-text display-4" id="total-visits">-</p>
+                        <small class="text-muted" id="total-visits-change">0% change</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Unique Visitors</h5>
+                        <p class="card-text display-4" id="unique-visitors">-</p>
+                        <small class="text-muted" id="unique-visitors-change">0% change</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Mobile Visits</h5>
+                        <p class="card-text display-4" id="mobile-visits">-</p>
+                        <small class="text-muted" id="mobile-percent">0% of total</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body">
+                        <h5 class="card-title">Desktop Visits</h5>
+                        <p class="card-text display-4" id="desktop-visits">-</p>
+                        <small class="text-muted" id="desktop-percent">0% of total</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Visits Over Time</h5>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary time-range-btn active" data-range="day">Day</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary time-range-btn" data-range="week">Week</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary time-range-btn" data-range="month">Month</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="visits-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Device Distribution</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="devices-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Visits</h5>
+                <div class="input-group" style="width: 300px;">
+                    <input type="text" class="form-control form-control-sm" id="search-visits" placeholder="Search...">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" id="search-btn">Search</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="visits-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Visitor ID</th>
+                                <th>Timestamp</th>
+                                <th>URL</th>
+                                <th>Referrer</th>
+                                <th>Device</th>
+                                <th>Language</th>
+                                <th>Screen</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="visits-data">
+                            <tr>
+                                <td colspan="9" class="text-center">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-primary refresh-btn" id="floating-refresh-btn">
+            <span id="floating-refresh-icon">↻</span> Refresh
+        </button>
+    </div>
+
+    <script>
+        // Global variables
+        let visitsChart = null;
+        let devicesChart = null;
+        let analyticsData = [];
+        let lastUpdateTime = new Date();
+        const refreshInterval = 30000; // 30 seconds
+        let autoRefreshTimer = null;
+        let currentTimeRange = 'day';
+
+        // Initialize charts
+        function initCharts() {
+            // Visits over time chart
+            const visitsCtx = document.getElementById('visits-chart').getContext('2d');
+            visitsChart = new Chart(visitsCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Visits',
+                        data: [],
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: 'rgba(54, 162, 235, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Devices chart
+            const devicesCtx = document.getElementById('devices-chart').getContext('2d');
+            devicesChart = new Chart(devicesCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Desktop', 'Mobile', 'Unknown'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.8)',
+                            'rgba(255, 99, 132, 0.8)',
+                            'rgba(201, 203, 207, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(201, 203, 207, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Prepare time-series data for the visits chart
+        function prepareTimeSeriesData(data, timeRange) {
+            const timeFormat = new Intl.DateTimeFormat('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+            
+            const dateFormat = new Intl.DateTimeFormat('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+
+            const now = new Date();
+            let startTime;
+            
+            switch(timeRange) {
+                case 'day':
+                    startTime = new Date(now);
+                    startTime.setHours(0, 0, 0, 0);
+                    break;
+                case 'week':
+                    startTime = new Date(now);
+                    startTime.setDate(now.getDate() - 7);
+                    break;
+                case 'month':
+                    startTime = new Date(now);
+                    startTime.setMonth(now.getMonth() - 1);
+                    break;
+                default:
+                    startTime = new Date(now);
+                    startTime.setHours(0, 0, 0, 0);
+            }
+
+            // Filter data by time range
+            const filteredData = data.filter(visit => {
+                const visitDate = new Date(visit.timestamp);
+                return visitDate >= startTime;
+            });
+
+            // Group data by hour or day depending on time range
+            const groupedData = {};
+            
+            filteredData.forEach(visit => {
+                const visitDate = new Date(visit.timestamp);
+                let key;
+                
+                if (timeRange === 'day') {
+                    // Group by hour for daily view
+                    key = visitDate.getHours();
+                } else {
+                    // Group by day for weekly/monthly view
+                    key = visitDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                }
+                
+                if (!groupedData[key]) {
+                    groupedData[key] = 0;
+                }
+                
+                groupedData[key]++;
+            });
+            
+            // Convert to arrays for Chart.js
+            const labels = [];
+            const counts = [];
+            
+            if (timeRange === 'day') {
+                // For day view, ensure we have all 24 hours
+                for (let hour = 0; hour < 24; hour++) {
+                    const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+                    const period = hour < 12 ? 'AM' : 'PM';
+                    labels.push(`${displayHour} ${period}`);
+                    counts.push(groupedData[hour] || 0);
+                }
+            } else {
+                // For week/month view, sort dates
+                const sortedKeys = Object.keys(groupedData).sort();
+                
+                sortedKeys.forEach(key => {
+                    const date = new Date(key);
+                    labels.push(dateFormat.format(date));
+                    counts.push(groupedData[key]);
+                });
+            }
+            
+            return { labels, counts };
+        }
+
+        // Update device distribution chart
+        function updateDevicesChart(data) {
+            const deviceCounts = {
+                Desktop: 0,
+                Mobile: 0,
+                Unknown: 0
+            };
+            
+            data.forEach(visit => {
+                const device = visit.device || 'Unknown';
+                if (deviceCounts.hasOwnProperty(device)) {
+                    deviceCounts[device]++;
+                } else {
+                    deviceCounts.Unknown++;
+                }
+            });
+            
+            devicesChart.data.datasets[0].data = [
+                deviceCounts.Desktop,
+                deviceCounts.Mobile,
+                deviceCounts.Unknown
+            ];
+            
+            devicesChart.update();
+        }
+
+        // Update summary statistics
+        function updateSummaryStats(data) {
+            // Calculate total visits
+            const totalVisits = data.length;
+            document.getElementById('total-visits').textContent = totalVisits.toLocaleString();
+            
+            // Calculate unique visitors
+            const uniqueVisitors = new Set();
+            const deviceCounts = { Mobile: 0, Desktop: 0 };
+            
+            data.forEach(visit => {
+                // Count unique visitors
+                uniqueVisitors.add(visit.visitor_id);
+                
+                // Count devices
+                if (visit.device === 'Mobile') deviceCounts.Mobile++;
+                else if (visit.device === 'Desktop') deviceCounts.Desktop++;
+            });
+            
+            // Update unique visitors count
+            document.getElementById('unique-visitors').textContent = uniqueVisitors.size.toLocaleString();
+            
+            // Update device counts
+            document.getElementById('mobile-visits').textContent = deviceCounts.Mobile.toLocaleString();
+            document.getElementById('desktop-visits').textContent = deviceCounts.Desktop.toLocaleString();
+            
+            // Calculate percentages
+            if (totalVisits > 0) {
+                document.getElementById('mobile-percent').textContent = 
+                    `${Math.round((deviceCounts.Mobile / totalVisits) * 100)}% of total`;
+                document.getElementById('desktop-percent').textContent = 
+                    `${Math.round((deviceCounts.Desktop / totalVisits) * 100)}% of total`;
+            }
+        }
+
+        function updateVisitsTable(data) {
+  const tableBody = document.getElementById('visits-data');
+  tableBody.innerHTML = '';
+  
+  if (data.length === 0) {
+    const row = document.createElement('tr');
+    row.innerHTML = '<td colspan="9" class="text-center">No data available</td>';
+    tableBody.appendChild(row);
+    return;
+  }
+  
+  data.slice(0, 100).forEach(visit => {
+    const row = document.createElement('tr');
+    const visitDate = new Date(visit.timestamp);
+    const dateFormatted = visitDate.toLocaleDateString() + ' ' + visitDate.toLocaleTimeString();
+    const screen = visit.screen_width && visit.screen_height ? 
+                  `${visit.screen_width}×${visit.screen_height}` : 'Unknown';
+    
+    // Safely handle URL display
+    let urlDisplay = visit.url || '-';
+    if (urlDisplay.length > 30) {
+      urlDisplay = urlDisplay.substring(0, 30) + '...';
+    }
+    
+    // Safely handle referrer display
+    let referrerDisplay = 'direct';
+    try {
+      if (visit.referrer && visit.referrer !== 'direct') {
+        referrerDisplay = new URL(visit.referrer).hostname || 'direct';
+      }
+    } catch (e) {
+      referrerDisplay = 'invalid';
+    }
+    
+    row.innerHTML = `
+      <td>${visit.id || '-'}</td>
+      <td>${visit.visitor_id ? visit.visitor_id.substring(0, 8) + '...' : '-'}</td>
+      <td>${dateFormatted}</td>
+      <td title="${visit.url || ''}">${urlDisplay}</td>
+      <td title="${visit.referrer || ''}">${referrerDisplay}</td>
+      <td>${visit.device || 'Unknown'}</td>
+      <td>${visit.language || 'Unknown'}</td>
+      <td>${screen}</td>
+      <td>${visit.duration || 0}s</td>
+    `;
+    
+    tableBody.appendChild(row);
+  });
+}
+        // Load analytics data
+        function loadAnalyticsData() {
+            const connectionStatus = document.getElementById('connection-status');
+            connectionStatus.textContent = 'Loading...';
+            connectionStatus.className = 'badge bg-warning me-2';
+            
+            // Add rotating animation to refresh icons
+            document.getElementById('refresh-icon').classList.add('spin');
+            document.getElementById('floating-refresh-icon').classList.add('spin');
+            
+            fetch('/api/analytics/visits')
+  .then(response => {
+    console.log('Response status:', response.status);
+    return response.json();
+  })
+  .then(data => {
+    console.log('Received data:', data);
+                    
+                    analyticsData = data;
+                    lastUpdateTime = new Date();
+                    
+                    // Update UI components
+                    updateSummaryStats(data);
+                    updateDevicesChart(data);
+                    updateVisitsTable(data);
+                    
+                    // Update time-series chart based on current time range
+                    const chartData = prepareTimeSeriesData(data, currentTimeRange);
+                    visitsChart.data.labels = chartData.labels;
+                    visitsChart.data.datasets[0].data = chartData.counts;
+                    visitsChart.update();
+                    
+                    // Update status indicators
+                    connectionStatus.textContent = `Connected (${data.length} visits)`;
+                    connectionStatus.className = 'badge bg-success me-2';
+                    
+                    console.log(`Data updated at ${lastUpdateTime.toLocaleTimeString()}`, data);
+                })
+                .catch(error => {
+                    console.error('Error loading analytics data:', error);
+                    connectionStatus.textContent = 'Error: ' + error.message;
+                    connectionStatus.className = 'badge bg-danger me-2';
+                    
+                    // Show error in table
+                    const tableBody = document.getElementById('visits-data');
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="9" class="text-center text-danger">
+                                Error loading data: ${error.message}
+                            </td>
+                        </tr>
+                    `;
+                })
+                .finally(() => {
+                    // Remove spinning animation from refresh icons
+                    document.getElementById('refresh-icon').classList.remove('spin');
+                    document.getElementById('floating-refresh-icon').classList.remove('spin');
+                });
+        }
+
+        // Set up auto-refresh
+        function setupAutoRefresh() {
+            if (autoRefreshTimer) {
+                clearInterval(autoRefreshTimer);
+            }
+            
+            autoRefreshTimer = setInterval(() => {
+                loadAnalyticsData();
+            }, refreshInterval);
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add spinning animation style
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                .spin {
+                    display: inline-block;
+                    animation: spin 1s linear infinite;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Initialize charts
+            initCharts();
+            
+            // Load initial data
+            loadAnalyticsData();
+            
+            // Set up auto-refresh
+            setupAutoRefresh();
+            
+            // Set up time range buttons
+            document.querySelectorAll('.time-range-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Update active button
+                    document.querySelectorAll('.time-range-btn').forEach(b => {
+                        b.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // Update time range and refresh chart
+                    currentTimeRange = this.getAttribute('data-range');
+                    const chartData = prepareTimeSeriesData(analyticsData, currentTimeRange);
+                    visitsChart.data.labels = chartData.labels;
+                    visitsChart.data.datasets[0].data = chartData.counts;
+                    visitsChart.update();
+                });
+            });
+            
+            // Set up manual refresh buttons
+            document.getElementById('refresh-btn').addEventListener('click', loadAnalyticsData);
+            document.getElementById('floating-refresh-btn').addEventListener('click', loadAnalyticsData);
+            
+            // Set up search functionality
+            document.getElementById('search-btn').addEventListener('click', function() {
+                const searchTerm = document.getElementById('search-visits').value.toLowerCase();
+                
+                if (!searchTerm.trim()) {
+                    updateVisitsTable(analyticsData);
+                    return;
+                }
+                
+                const filteredData = analyticsData.filter(visit => {
+                    return (
+                        (visit.visitor_id && visit.visitor_id.toLowerCase().includes(searchTerm)) ||
+                        (visit.url && visit.url.toLowerCase().includes(searchTerm)) ||
+                        (visit.path && visit.path.toLowerCase().includes(searchTerm)) ||
+                        (visit.referrer && visit.referrer.toLowerCase().includes(searchTerm)) ||
+                        (visit.device && visit.device.toLowerCase().includes(searchTerm)) ||
+                        (visit.language && visit.language.toLowerCase().includes(searchTerm))
+                    );
+                });
+                
+                updateVisitsTable(filteredData);
+            });
+            
+            // Enable search on Enter key
+            document.getElementById('search-visits').addEventListener('keyup', function(event) {
+                if (event.key === 'Enter') {
+                    document.getElementById('search-btn').click();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
